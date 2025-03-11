@@ -6,18 +6,21 @@ cytoscape.use(dagre);
 
 const DAGVisualizer: React.FC = () => {
   const cyRef = useRef<cytoscape.Core | null>(null);
-  const [selectedNode, setSelectedNode] = useState<{ id: string; metadata: string } | null>(null);
-  const positionsRef = useRef<Record<string, cytoscape.Position>>({}); // Stores node positions persistently
+  const positionsRef = useRef<Record<string, cytoscape.Position>>({});
+  const [selectedNode, setSelectedNode] = useState<any>(null);
 
   useEffect(() => {
     if (!document.getElementById("cy")) return;
 
-    cyRef.current = cytoscape({
+    const cy = cytoscape({
       container: document.getElementById("cy"),
       elements: [],
       style: [
-        { selector: "node", style: { "background-color": "#007bff", "label": "data(id)", "text-valign": "center", color: "#fff" } },
+        { selector: "node", style: { "background-color": "#007bff", "label": "data(id)", "text-valign": "center", color: "#fff", "shape": "ellipse" } },
         { selector: "node.disabled", style: { "background-color": "#aaa", "border-style": "dashed", opacity: 0.6 } },
+        { selector: "node.hardware", style: { "background-color": "#ffcc00", "shape": "rectangle", "width": "80px", "height": "40px" } },
+        { selector: "node.message", style: { "background-color": "#ffa500", "shape": "diamond" } },
+        { selector: "node.parameter", style: { "background-color": "#6a0dad", "shape": "pentagon" } },
         { selector: "edge", style: { "width": 3, "curve-style": "bezier", "target-arrow-shape": "triangle", "label": "data(label)" } },
         { selector: "edge.command", style: { "line-color": "red", "target-arrow-color": "red" } },
         { selector: "edge.state", style: { "line-color": "green", "target-arrow-color": "green" } }
@@ -25,21 +28,24 @@ const DAGVisualizer: React.FC = () => {
       layout: { name: "dagre" }
     });
 
-    cyRef.current.on("dragfreeon", "node", (event) => {
+    cy.on("dragfreeon", "node", (event) => {
       const node = event.target;
       positionsRef.current[node.id()] = node.position();
     });
 
-    // display metadata
-    cyRef.current.on("tap", "node", (event) => {
-      const node = event.target;
-      setSelectedNode({ id: node.id(), metadata: node.data("metadata") });
+    cy.on("tap", "node", (event) => {
+      setSelectedNode(event.target.data());
     });
 
-    // connect to websocket server
-    const socket = new WebSocket("ws://localhost:8080");
+    cyRef.current = cy;
 
-    socket.onmessage = (event) => {
+    const ws = new WebSocket("ws://localhost:8080");
+
+    ws.onopen = () => console.log("WebSocket connected");
+    ws.onerror = (error) => console.error("WebSocket error:", error);
+    ws.onclose = () => console.log("WebSocket disconnected");
+
+    ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
       if (data.type === "log") {
@@ -49,21 +55,52 @@ const DAGVisualizer: React.FC = () => {
       }
     };
 
-    function updateDAG(nodes: { id: string; metadata: string; disabled?: boolean }[], edges: { source: string; target: string; label: string; type: string }[]) {
+    function updateDAG(
+      nodes: {
+        id: string;
+        metadata?: string;
+        command_interface?: boolean;
+        state_interface?: boolean;
+        message_interface?: boolean;
+        parameter_interface?: boolean;
+        is_hardware?: boolean;
+        disabled?: boolean;
+      }[],
+      edges: { source: string; target: string; label: string; type: string }[]
+    ) {
       if (!cyRef.current) return;
-
       const cy = cyRef.current;
 
-      // preserve positions before updating
       cy.nodes().forEach((node) => {
         positionsRef.current[node.id()] = node.position();
       });
 
       cy.elements().remove();
+
       cy.add(
         nodes.map((node) => ({
-          data: { id: node.id, metadata: node.metadata },
-          classes: node.disabled ? "disabled" : "",
+          data: {
+            id: node.id,
+            metadata: node.metadata || "N/A",
+            command_interface: node.command_interface || false,
+            state_interface: node.state_interface || false,
+            message_interface: node.message_interface || false,
+            parameter_interface: node.parameter_interface || false,
+            is_hardware: node.is_hardware || false
+          },
+          classes: node.is_hardware
+            ? "hardware"
+            : node.command_interface
+            ? "command"
+            : node.state_interface
+            ? "state"
+            : node.message_interface
+            ? "message"
+            : node.parameter_interface
+            ? "parameter"
+            : node.disabled
+            ? "disabled"
+            : "",
           position: positionsRef.current[node.id] || undefined
         }))
       );
@@ -81,8 +118,8 @@ const DAGVisualizer: React.FC = () => {
     }
 
     return () => {
-      socket.close();
-      cyRef.current?.destroy();
+      ws.close();
+      cy.destroy();
     };
   }, []);
 
@@ -93,7 +130,12 @@ const DAGVisualizer: React.FC = () => {
       {selectedNode && (
         <div style={{ marginTop: "10px", padding: "10px", border: "1px solid gray", background: "#f8f9fa" }}>
           <strong>Node ID:</strong> {selectedNode.id} <br />
-          <strong>Metadata:</strong> {selectedNode.metadata}
+          <strong>Metadata:</strong> {selectedNode.metadata} <br />
+          <strong>Command Interface:</strong> {selectedNode.command_interface ? "Yes" : "No"} <br />
+          <strong>State Interface:</strong> {selectedNode.state_interface ? "Yes" : "No"} <br />
+          <strong>Message Interface:</strong> {selectedNode.message_interface ? "Yes" : "No"} <br />
+          <strong>Parameter Interface:</strong> {selectedNode.parameter_interface ? "Yes" : "No"} <br />
+          <strong>Hardware:</strong> {selectedNode.is_hardware ? "Yes" : "No"} <br />
         </div>
       )}
     </div>
