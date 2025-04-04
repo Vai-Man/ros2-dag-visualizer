@@ -68,8 +68,7 @@ npm start
 
 1. Open the frontend in the browser (`http://localhost:5500/` if using Live Server).  
 2. The graph updates **automatically** as **WebSocket messages** arrive from ROS2.  
-3. **Click on a node** to view **metadata**.  
-4. **Use checkboxes** to **filter elements** like hardware nodes, command edges, etc.  
+3. **Click on a node** to view **metadata**.    
 
 ---
 
