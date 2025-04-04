@@ -1,21 +1,27 @@
-## **ROS2 DAG Visualizer**  
+# **ROS2 Graph Visualizer**  
 
-A TypeScript + React application for visualizing Directed Acyclic Graphs (DAGs) used in ROS2 (Robot Operating System 2). This project provides an interactive interface to view, modify, and analyze DAG structures dynamically, supporting real-time WebSocket updates and node position persistence.
+A **TypeScript + D3.js** application for visualizing **ROS2 graphs** dynamically. This project provides an **interactive interface** to visualize, modify, and analyze ROS2 node connections in real-time, with support for **hardware differentiation, state/command interfaces, filtering options**, and **live WebSocket updates**.
 
 ---
 
 ## **Features**  
-1. **Dynamic Graph Rendering** – Uses **Cytoscape.js** with the **Dagre layout** to visualize ROS2 DAGs.  
-2. **Real-time Updates** – Listens to WebSocket events to reflect changes in the DAG dynamically.  
-3. **Node Metadata Display** – Click on a node to view its metadata.  
-4. **Support for Command & State Edges** – Different edge types with distinct visual styles.  
+1. **Real-time Graph Rendering** – Uses **D3.js** to dynamically visualize ROS2 node connections.  
+2. **WebSocket Updates** – Automatically updates the graph as new ROS2 messages arrive.  
+3. **Node Differentiation** –  
+   - **Hardware nodes** are **rectangles**, while others are **circles**.  
+   - **State interface nodes** are **green**, while others are black.  
+4. **Edge Types & Colors** –  
+   - **Command interface edges** are **red**.  
+   - **State interface edges** are **blue**.  
+5. **Interactive Graph** – Drag nodes, zoom, and pan for better visualization.  
+6. **Node Metadata** – Click a node to view **metadata** in an alert popup.  
 
 ---
 
 ## **Tech Stack**  
-- **Frontend:** React, TypeScript, Cytoscape.js, Cytoscape-Dagre  
-- **Backend:** Node.js (for WebSocket communication with ROS2)  
-- **Data Format:** JSON WebSocket messages  
+- **Frontend:** TypeScript, D3.js  
+- **Backend:** Node.js, TypeScript (WebSocket server for ROS2)  
+- **Data Format:** JSON messages over WebSocket  
 
 ---
 
@@ -23,8 +29,8 @@ A TypeScript + React application for visualizing Directed Acyclic Graphs (DAGs) 
 
 ### **1. Clone the Repository**  
 ```bash
-git clone https://github.com/vai-man/ROS2-DAG-Visualizer.git
-cd ROS2-DAG-Visualizer
+git clone https://github.com/Vai-Man/ros2-dag-visualizer.git
+cd ros2-dag-visualizer
 ```
 
 ### **2. Install Dependencies**  
@@ -37,7 +43,7 @@ npm install
 
 #### **Frontend**  
 ```bash
-cd ../frontend
+cd frontend
 npm install
 ```
 
@@ -49,46 +55,45 @@ cd backend
 node index.js
 ```
 
-#### **Start Frontend (React App)**
+#### **Start Frontend (HTML Server)**
+
 ```bash
 cd frontend
 npm start
 ```
+
 ---
 
 ## **Usage**  
 
-1. Open the frontend in the browser at `http://localhost:3000/`.  
-2. The DAG will be updated dynamically based on **WebSocket messages** received from ROS2.  
-3. Click on a node to view its **metadata**.  
+1. Open the frontend in the browser (`http://localhost:5500/` if using Live Server).  
+2. The graph updates **automatically** as **WebSocket messages** arrive from ROS2.  
+3. **Click on a node** to view **metadata**.  
+4. **Use checkboxes** to **filter elements** like hardware nodes, command edges, etc.  
 
 ---
 
 ## **WebSocket Data Format**  
 
-The backend receives updates from ROS2 and sends messages to the frontend in the following JSON format:
+The backend listens to ROS2 messages and sends them to the frontend in this JSON format:
 
-### **DAG Update Message**
+### **Graph Update Message**
 ```json
 {
-  "type": "dag_update",
-  "nodes": [
-    { "id": "A", "metadata": "Start Node", "disabled": false },
-    { "id": "B", "metadata": "Processing Node", "disabled": true }
-  ],
-  "edges": [
-    { "source": "A", "target": "B", "label": "Transition", "type": "command" }
-  ]
+  "start": "A",
+  "end": "C",
+  "command_interface": true,
+  "state_interface": false,
+  "is_hardware": true,
+  "metadata": "Hardware node example"
 }
 ```
 
-### **Log Message**
-```json
-{
-  "type": "log",
-  "data": "ROS2 Node started..."
-}
-```
+### **Explanation of Fields:**
+- **`start` / `end`** – Nodes in the graph  
+- **`command_interface`** – If true, edge is **red**  
+- **`state_interface`** – If true, edge is **blue**  
+- **`is_hardware`** – If true, the **start node** is drawn as a rectangle  
+- **`metadata`** – Additional information (displayed on node click)  
 
 ---
-
