@@ -1,43 +1,155 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web site created using create-react-app"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROS 2 Graph Visualizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.4/d3.min.js"></script>
+    <style>
+        svg {
+            width: 100%;
+            height: 600px;
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <h1>ROS 2 Graph Visualizer</h1>
+    <svg></svg>
 
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
+    <script>
+        const ws = new WebSocket("ws://localhost:8080");
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+        ws.onopen = () => console.log("✅ WebSocket Connected");
+        ws.onclose = () => console.log("❌ WebSocket Disconnected");
+        ws.onerror = (error) => console.error("⚠️ WebSocket Error:", error);
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-  </body>
+        const nodes = {};
+        const links = [];
+
+        const svg = d3.select("svg")
+            .call(d3.zoom().on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            }))
+            .append("g");
+
+        const width = window.innerWidth;
+        const height = 600;
+
+        const simulation = d3.forceSimulation()
+            .force("link", d3.forceLink().id(d => d.id).distance(100))
+            .force("charge", d3.forceManyBody().strength(-200))
+            .force("center", d3.forceCenter(width / 2, height / 2));
+
+        const g = svg.append("g");
+
+        function updateGraph() {
+            g.selectAll("*").remove();
+
+            // Draw Links
+            const link = g.selectAll("line")
+                .data(links)
+                .enter().append("line")
+                .style("stroke", d => d.command_interface ? "red" : "blue")
+                .style("stroke-width", 2);
+
+            // Draw Nodes
+            const node = g.selectAll("g.node")
+                .data(Object.values(nodes))
+                .enter().append("g")
+                .attr("class", "node")
+                .call(d3.drag()
+                    .on("start", dragStarted)
+                    .on("drag", dragged)
+                    .on("end", dragEnded)
+                )
+                .on("click", (event, d) => {
+                    alert(`Node: ${d.id}\nMetadata: ${d.metadata || "N/A"}`);
+                });
+
+            // Add different shapes based on hardware status
+            node.each(function(d) {
+                const shape = d3.select(this);
+                if (d.is_hardware) {
+                    shape.append("rect")
+                        .attr("x", -10)
+                        .attr("y", -10)
+                        .attr("width", 20)
+                        .attr("height", 20)
+                        .style("fill", d.state_interface ? "green" : "black");
+                } else {
+                    shape.append("circle")
+                        .attr("r", 10)
+                        .style("fill", d.state_interface ? "green" : "black");
+                }
+            });
+
+            // Draw Labels
+            node.append("text")
+                .attr("dx", 12)
+                .attr("dy", ".35em")
+                .text(d => d.id);
+
+            simulation.nodes(Object.values(nodes)).on("tick", () => {
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+                link.attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+            });
+
+            simulation.force("link").links(links);
+            simulation.alpha(1).restart();
+        }
+
+        function dragStarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragEnded(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            console.log("📌 Received WebSocket message:", msg);
+
+            // Ensure only the `start` node is hardware if applicable
+            if (!nodes[msg.start]) {
+                nodes[msg.start] = {
+                    id: msg.start,
+                    metadata: msg.metadata,
+                    is_hardware: msg.is_hardware,
+                    state_interface: msg.state_interface
+                };
+            }
+
+            if (!nodes[msg.end]) {
+                nodes[msg.end] = {
+                    id: msg.end,
+                    metadata: msg.metadata,
+                    is_hardware: false,  // Ensuring `end` node is never hardware
+                    state_interface: msg.state_interface
+                };
+            }
+
+            links.push({
+                source: nodes[msg.start],
+                target: nodes[msg.end],
+                command_interface: msg.command_interface
+            });
+
+            updateGraph();
+        };
+    </script>
+</body>
 </html>

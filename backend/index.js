@@ -2,63 +2,52 @@ const rclnodejs = require("rclnodejs");
 const WebSocket = require("ws");
 
 async function main() {
+  console.log("Starting ROS 2 Graph Visualizer backend...");
+
   await rclnodejs.init();
   const node = new rclnodejs.Node("ros2_graph_visualizer");
+
+  console.log("ROS 2 node initialized and running...");
+
+  // WebSocket Server (Backend)
   const wss = new WebSocket.Server({ port: 8080 });
+  console.log("WebSocket server running on ws://localhost:8080");
 
-  let dagNodes = {
-    A: { id: "A", metadata: "Start Node", command_interface: true, state_interface: false, is_hardware: false },
-    B: { id: "B", metadata: "Process Node", command_interface: true, state_interface: true, is_hardware: false },
-    C: { id: "C", metadata: "Process Step", command_interface: true, state_interface: false, is_hardware: false },
-    D: { id: "D", metadata: "Final Step", command_interface: false, state_interface: true, is_hardware: false },
-    HW: { id: "HW", metadata: "Hardware Node", command_interface: false, state_interface: true, is_hardware: true }
-  };
+  wss.on("connection", (ws) => {
+    console.log("🌐 New WebSocket client connected.");
+  });
 
-  let dagEdges = [
-    { source: "A", target: "B", label: "CommandInterface", type: "command" },
-    { source: "B", target: "C", label: "CommandInterface", type: "command" },
-    { source: "C", target: "D", label: "CommandInterface", type: "command" },
-    { source: "D", target: "A", label: "StateInterface", type: "state" },
-    { source: "D", target: "B", label: "StateInterface", type: "state" },
-    { source: "C", target: "HW", label: "Hardware Connection", type: "state" }
-  ];
+  // ROS 2 Subscription
+  const GraphEdge = rclnodejs.require("ros2_graph_visualizer/msg/GraphEdge");
 
-  node.createSubscription("std_msgs/msg/String", "/rosout", (msg) => {
-    console.log(`Received log: ${msg.data}`);
+  node.createSubscription(GraphEdge, "/graph_updates", (msg) => {
+    console.log(`✅ Received ROS 2 message: ${JSON.stringify(msg)}`);
+
+    // Broadcast to all WebSocket clients
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type: "log", data: msg.data }));
+        console.log("🚀 Sending message to WebSocket frontend...");
+        client.send(JSON.stringify(msg));
       }
     });
   });
 
-  function sendDAGUpdate() {
-    const dagData = {
-      type: "dag_update",
-      nodes: Object.values(dagNodes),
-      edges: dagEdges
-    };
+  console.log("📡 Listening for ROS 2 messages...");
 
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(dagData));
-      }
-    });
+  // ✅ FIX: Run `spin(node)` in a separate async function
+  async function runSpin() {
+    await rclnodejs.spin(node);
   }
+  runSpin();
 
-  // Send DAG update every 5 seconds
-  setInterval(sendDAGUpdate, 5000);
-
-  console.log("WebSocket Server running on ws://localhost:8080");
-
+  // ✅ FIX: Handle process exit properly
   process.on("SIGINT", () => {
-    console.log("Shutting down...");
-    node.destroy();
-    wss.close();
-    process.exit();
+    console.log("Shutting down backend...");
+    node.destroy().then(() => {
+      wss.close();
+      process.exit(0);
+    });
   });
-
-  rclnodejs.spin(node);
 }
 
 main();
